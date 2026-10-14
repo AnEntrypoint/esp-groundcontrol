@@ -54,60 +54,76 @@ jobs:
       - name: Check every app image fits its slot (factory 0x100000, ota_0 and ota_1 0x170000)
         shell: bash
         run: |
-          cat > "$RUNNER_TEMP/app-fit.mjs" <<'NODE'
-          import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+          cat > "$RUNNER_TEMP/app-fit.py" <<'PY'
+          import os
+          import re
+          import sys
 
-          const PINNED = { factory: 0x100000, ota_0: 0x170000, ota_1: 0x170000 };
+          PINNED = {"factory": 0x100000, "ota_0": 0x170000, "ota_1": 0x170000}
 
-          const slots = [];
-          for (const raw of readFileSync("partitions.csv", "utf8").split("\n")) {
-            const line = raw.split("#")[0].trim();
-            if (line === "") continue;
-            const cols = line.split(",").map((c) => c.trim());
-            if (cols[1] !== "app") continue;
-            const size = Number(cols[4]);
-            if (!Number.isFinite(size) || size <= 0) continue;
-            slots.push({ name: cols[0], size });
-          }
-          if (slots.length === 0) {
-            for (const name of Object.keys(PINNED)) slots.push({ name, size: PINNED[name] });
-          }
+          slots = []
+          with open("partitions.csv", encoding="utf-8") as handle:
+              for raw in handle:
+                  line = raw.split("#")[0].strip()
+                  if line == "":
+                      continue
+                  cols = [c.strip() for c in line.split(",")]
+                  if len(cols) < 5 or cols[1] != "app":
+                      continue
+                  try:
+                      size = int(cols[4], 0)
+                  except ValueError:
+                      continue
+                  if size > 0:
+                      slots.append((cols[0], size))
+          if not slots:
+              slots = list(PINNED.items())
 
-          const report = existsSync("size-report.txt") ? readFileSync("size-report.txt", "utf8") : "";
-          const image = /Total image size:\s*~?\s*(\d+)/.exec(report);
-          const flash = /Used Flash size\s*:\s*(\d+)/.exec(report);
-          let appBytes = Math.max(image ? Number(image[1]) : 0, flash ? Number(flash[1]) : 0);
-          if (existsSync("build")) {
-            for (const name of readdirSync("build")) {
-              if (!name.endsWith(".bin") || name === "bootloader.bin" || name.startsWith("partition")) continue;
-              appBytes = Math.max(appBytes, statSync("build/" + name).size);
-            }
-          }
-          if (appBytes <= 0) {
-            console.error("app image size not found: no size report figure and no app .bin under build/");
-            process.exit(1);
-          }
+          report = ""
+          if os.path.exists("size-report.txt"):
+              with open("size-report.txt", encoding="utf-8", errors="replace") as handle:
+                  report = handle.read()
 
-          console.log("app image " + appBytes + " bytes (0x" + appBytes.toString(16) + ")");
-          let over = false;
-          for (const slot of slots) {
-            const limit = PINNED[slot.name] ?? slot.size;
-            const ok = appBytes <= limit;
-            if (!ok) over = true;
-            const pct = ((appBytes / limit) * 100).toFixed(1);
-            console.log(
-              (ok ? "  ok   " : "  OVER ") +
-                slot.name +
-                " " + appBytes + " / " + limit +
-                " bytes (" + pct + "% used, headroom " + (limit - appBytes) + ")"
-            );
-          }
-          if (over) {
-            console.error("app image does not fit: raise the slot in partitions.csv or shrink the image");
-            process.exit(1);
-          }
-          NODE
-          node "$RUNNER_TEMP/app-fit.mjs"
+          def figure(pattern):
+              found = re.search(pattern, report)
+              return int(found.group(1)) if found else 0
+
+          app_bytes = max(
+              figure(r"Total image size:\s*~?\s*(\d+)"),
+              figure(r"Used Flash size\s*:\s*(\d+)"),
+          )
+          if os.path.isdir("build"):
+              for name in os.listdir("build"):
+                  if not name.endswith(".bin"):
+                      continue
+                  if name == "bootloader.bin" or name.startswith("partition"):
+                      continue
+                  app_bytes = max(app_bytes, os.path.getsize(os.path.join("build", name)))
+
+          if app_bytes <= 0:
+              sys.exit("app image size not found: no size report figure and no app .bin under build/")
+
+          print("app image {} bytes (0x{:x})".format(app_bytes, app_bytes))
+          over = False
+          for name, size in slots:
+              limit = PINNED.get(name, size)
+              ok = app_bytes <= limit
+              if not ok:
+                  over = True
+              print(
+                  "  {}   {} {} / {} bytes ({:.1f}% used, headroom {})".format(
+                      "ok" if ok else "OVER",
+                      name,
+                      app_bytes,
+                      limit,
+                      (app_bytes / limit) * 100,
+                      limit - app_bytes,
+                  )
+              )
+          if over:
+              sys.exit("app image does not fit: raise the slot in partitions.csv or shrink the image")
+          PY
+          python3 "$RUNNER_TEMP/app-fit.py"
 
       - name: Upload size reports
         uses: actions/upload-artifact@v4
