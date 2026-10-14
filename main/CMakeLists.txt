@@ -43,7 +43,7 @@ idf_component_register(
         esp_partition
         esp_hw_support
         esp_timer
-        esp_tls
+        esp-tls
         mbedtls
         mqtt
         nvs_flash
