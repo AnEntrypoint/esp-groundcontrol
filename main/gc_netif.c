@@ -4,6 +4,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "lwip/err.h"
+#include "lwip/ip4_addr.h"
 #include "lwip/netif.h"
 #include "lwip/pbuf.h"
 #include "esp_err.h"
@@ -17,6 +18,7 @@
 
 #define GC_NETIF_L2_HEADER_LEN (2u * GC_MAC_LEN)
 #define GC_NETIF_AP_CLIENTS_MAX GC_MAX_CLIENTS
+#define GC_NETIF_IMPL_NAME_LEN (NETIF_NAMESIZE + 2u)
 
 static const char *gc_netif_tag = "gc_netif";
 
@@ -172,17 +174,81 @@ static err_t gc_netif_ap_input_hook(struct pbuf *p, struct netif *inp)
     return gc_netif_ap_hook.input_original(p, inp);
 }
 
+static bool gc_netif_impl_has_ipv4(const struct netif *candidate, uint32_t wanted_addr)
+{
+    const ip4_addr_t *candidate_addr;
+
+    if (candidate == NULL || wanted_addr == 0u) {
+        return false;
+    }
+    candidate_addr = netif_ip4_addr(candidate);
+    return candidate_addr->addr == wanted_addr;
+}
+
+static struct netif *gc_netif_find_impl_by_ipv4(esp_netif_t *netif)
+{
+    esp_netif_ip_info_t ip_info;
+    struct netif *candidate;
+
+    if (netif == NULL) {
+        return NULL;
+    }
+    if (esp_netif_get_ip_info(netif, &ip_info) != ESP_OK) {
+        return NULL;
+    }
+    for (candidate = netif_list; candidate != NULL; candidate = candidate->next) {
+        if (gc_netif_impl_has_ipv4(candidate, ip_info.ip.addr)) {
+            return candidate;
+        }
+    }
+    return NULL;
+}
+
+static struct netif *gc_netif_find_impl_by_name(esp_netif_t *netif)
+{
+    char name[GC_NETIF_IMPL_NAME_LEN];
+
+    if (netif == NULL) {
+        return NULL;
+    }
+    memset(name, 0, sizeof(name));
+    if (esp_netif_get_netif_impl_name(netif, name) != ESP_OK) {
+        return NULL;
+    }
+    return netif_find(name);
+}
+
+static struct netif *gc_netif_find_impl(esp_netif_t *netif)
+{
+    struct netif *impl;
+
+    impl = gc_netif_find_impl_by_ipv4(netif);
+    if (impl != NULL) {
+        return impl;
+    }
+    return gc_netif_find_impl_by_name(netif);
+}
+
 static gc_err_t gc_netif_hook_install(gc_netif_hook_t *hook,
                                       esp_netif_t *netif,
                                       netif_linkoutput_fn linkoutput_hook,
                                       netif_input_fn input_hook)
 {
-    void *impl = esp_netif_get_netif_impl(netif);
+    const char *ifkey;
+    struct netif *impl;
 
+    if (hook == NULL || netif == NULL) {
+        return GC_ERR_INVALID_ARG;
+    }
+
+    impl = gc_netif_find_impl(netif);
     if (impl == NULL) {
+        ifkey = esp_netif_get_ifkey(netif);
+        GC_LOGW(gc_netif_tag, "lwip netif not resolvable for %s",
+                ifkey != NULL ? ifkey : "unknown");
         return GC_ERR_NOT_FOUND;
     }
-    hook->impl = (struct netif *)impl;
+    hook->impl = impl;
 
     if (hook->impl->linkoutput != NULL && !hook->linkoutput_wrapped) {
         hook->linkoutput_original = hook->impl->linkoutput;
@@ -403,13 +469,19 @@ bool gc_netif_sta_has_ip(void)
 
 bool gc_netif_sta_link_up(void)
 {
+    struct netif *impl;
+
     if (gc_netif_sta_handle == NULL) {
         return false;
     }
     if (!esp_netif_is_netif_up(gc_netif_sta_handle)) {
         return false;
     }
-    return (esp_netif_get_flags(gc_netif_sta_handle) & ESP_NETIF_FLAG_LINK_UP) != 0u;
+    impl = gc_netif_find_impl(gc_netif_sta_handle);
+    if (impl == NULL) {
+        return false;
+    }
+    return netif_is_link_up(impl) != 0u;
 }
 
 gc_err_t gc_netif_sta_ipv4(esp_netif_ip_info_t *out)
@@ -458,7 +530,8 @@ gc_err_t gc_netif_ap_ipv4(esp_netif_ip_info_t *out)
 
 gc_err_t gc_netif_install_counters(void)
 {
-    gc_err_t status;
+    gc_err_t sta_status;
+    gc_err_t ap_status;
 
     if (gc_netif_counters_installed) {
         return GC_OK;
@@ -467,18 +540,23 @@ gc_err_t gc_netif_install_counters(void)
         return GC_ERR_NOT_FOUND;
     }
 
-    status = gc_netif_hook_install(&gc_netif_sta_hook, gc_netif_sta_handle,
-                                   gc_netif_sta_linkoutput_hook, gc_netif_sta_input_hook);
-    if (status != GC_OK) {
+    sta_status = gc_netif_hook_install(&gc_netif_sta_hook, gc_netif_sta_handle,
+                                       gc_netif_sta_linkoutput_hook, gc_netif_sta_input_hook);
+    if (sta_status != GC_OK) {
         GC_LOGE(gc_netif_tag, "station counter install failed");
-        return status;
     }
 
-    status = gc_netif_hook_install(&gc_netif_ap_hook, gc_netif_ap_handle,
-                                   gc_netif_ap_linkoutput_hook, gc_netif_ap_input_hook);
-    if (status != GC_OK) {
+    ap_status = gc_netif_hook_install(&gc_netif_ap_hook, gc_netif_ap_handle,
+                                      gc_netif_ap_linkoutput_hook, gc_netif_ap_input_hook);
+    if (ap_status != GC_OK) {
         GC_LOGE(gc_netif_tag, "soft-ap counter install failed");
-        return status;
+    }
+
+    if (sta_status != GC_OK) {
+        return sta_status;
+    }
+    if (ap_status != GC_OK) {
+        return ap_status;
     }
 
     gc_netif_counters_installed = true;

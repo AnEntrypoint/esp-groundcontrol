@@ -229,8 +229,8 @@ you rely on the system.
 | 27 | NVS 24 KB holds all persisted state | `partitions.csv` | `nvs_get_stats` after a month of quota, strikes and counters |
 | 28 | factory image fits in 1 MB | `partitions.csv` | `idf.py size` on the `GC_RESCUE_IMAGE` build |
 | 29 | main app fits in 1472 KB | `partitions.csv` | `idf.py size` on the default build; leave 10 percent headroom |
-| 30 | 0x10000 free at top of flash | comment in `partitions.csv` | see the discrepancy note in `docs/PARTITIONS.md`; as written there is none |
-| 31 | beacon counter wrap | 16-bit on the wire | run 700 days or inject counters; confirm the VPS replay window handles wrap |
+| 30 | no spare space at the top of flash | `partitions.csv` | confirmed: 0x290000 + 0x170000 = 0x400000 exactly. Shrink `ota_1` before adding a coredump slot |
+| 31 | beacon counter wrap | 32-bit on the wire, bytes 4..7 | run past 2^32 or inject counters; confirm the VPS replay window handles wrap |
 | 32 | OTA preflight: voltage or battery, free heap, free slot, RSRP, window, no alarm, no recent failure of this version | REQUIREMENTS 10.2 | pick each threshold on a bench unit by watching a real download succeed and fail |
 | 33 | portal request timeout | `verification_timeout_ms` in `gc_config_t` | measure p99 controller round trip on the worst site, add margin |
 | 34 | B315 API poll latency | `gc_modem_api_last_latency_ms` | log it for a week, set the API timeout above p99 |
