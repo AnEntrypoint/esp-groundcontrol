@@ -2,6 +2,7 @@
 
 #include "gc_log.h"
 
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -70,7 +71,7 @@ gc_err_t gc_selftest_start(uint32_t deadline_s)
     s_started = true;
     s_time_valid = false;
     s_first_unmet_valid = false;
-    GC_LOGI(GC_SELFTEST_TAG, "start deadline=%us", deadline_s);
+    GC_LOGI(GC_SELFTEST_TAG, "start deadline=%" PRIu32 "s", deadline_s);
     return GC_OK;
 }
 
@@ -94,13 +95,13 @@ gc_err_t gc_selftest_tick(uint32_t now_s)
     if (gc_selftest_all_met()) {
         s_result = GC_SELFTEST_PASSED;
         s_first_unmet_valid = false;
-        GC_LOGI(GC_SELFTEST_TAG, "passed elapsed=%us", elapsed_s);
+        GC_LOGI(GC_SELFTEST_TAG, "passed elapsed=%" PRIu32 "s", elapsed_s);
         return GC_OK;
     }
     if (elapsed_s > s_deadline_s) {
         gc_selftest_record_first_unmet();
         s_result = GC_SELFTEST_FAILED;
-        GC_LOGE(GC_SELFTEST_TAG, "failed elapsed=%us on %s", elapsed_s,
+        GC_LOGE(GC_SELFTEST_TAG, "failed elapsed=%" PRIu32 "s on %s", elapsed_s,
                 gc_selftest_failed_criterion());
     }
     return GC_OK;
