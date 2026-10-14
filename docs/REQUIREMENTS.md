@@ -75,6 +75,18 @@ refuse to start.
 
 ## 3 Blocks
 
+3.0 Ubiquitous: a strike SHALL be counted once per soft-block cycle. A deny
+against a number that has no active block records one strike. Further denies
+arriving while that number's soft block is still active SHALL NOT record another
+strike; they SHALL return the existing block. When the soft block expires and the
+number is denied again, that is the next strike. Three strikes therefore means the
+offender returned three separate times after the 24 hour block lifted, and not
+three requests inside one block.
+
+3.0a Ubiquitous: a strike SHALL be keyed on the number HMAC, so the same number
+reported from a different client MAC accumulates against the same record, and a
+different number from the same MAC does not.
+
 3.1 Event-driven: on a deny caused by the number not having contacted the bot,
 the device SHALL soft block the client MAC for 24 hours.
 

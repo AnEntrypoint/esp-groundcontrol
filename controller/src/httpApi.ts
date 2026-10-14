@@ -99,15 +99,15 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, options: Http
       return;
     }
 
-    if (!authorized(req, options.operatorToken)) {
-      sendJson(res, 401, { error: "unauthorized" });
-      return;
-    }
-
     if (method === "GET" && path === "/healthz") {
       await guard(res, async () => {
         sendJson(res, 200, { ok: true });
       });
+      return;
+    }
+
+    if (!authorized(req, options.operatorToken)) {
+      sendJson(res, 401, { error: "unauthorized" });
       return;
     }
 
