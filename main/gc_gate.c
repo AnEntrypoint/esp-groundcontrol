@@ -379,6 +379,22 @@ static gc_err_t block_strike(const gc_key_t *number_key,
     if (block == NULL) {
         return GC_ERR_NO_MEM;
     }
+    if (block->rec.permanent != 0u) {
+        if (strikes_out != NULL) {
+            *strikes_out = block->rec.strikes;
+        }
+        return GC_OK;
+    }
+    if (block->rec.blocked_until_s > gate_now_s()) {
+        if (blocked_until_s != 0u) {
+            block->rec.blocked_until_s = blocked_until_s;
+            block->updated_ms = gate_now_ms();
+        }
+        if (strikes_out != NULL) {
+            *strikes_out = block->rec.strikes;
+        }
+        return GC_OK;
+    }
     uint32_t strikes = add_saturating_u32(block->rec.strikes, 1u);
     block->rec.strikes = strikes;
     block->updated_ms = gate_now_ms();

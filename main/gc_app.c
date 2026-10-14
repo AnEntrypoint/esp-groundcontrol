@@ -67,6 +67,8 @@ typedef struct {
     uint32_t last_tick_s;
     uint32_t tick_count;
     uint32_t boot_s;
+    bool clock_synced;
+    int64_t clock_offset_s;
 
     uint64_t last_uplink_up;
     uint64_t last_uplink_down;
@@ -121,6 +123,29 @@ static bool gc_app_psk_ready;
 static uint32_t gc_app_now_s(void)
 {
     return (uint32_t)(esp_timer_get_time() / 1000000ULL);
+}
+
+static void gc_app_sync_clock(uint32_t server_time_s)
+{
+    if (server_time_s == 0u) {
+        return;
+    }
+    app.clock_offset_s = (int64_t)server_time_s - (int64_t)gc_app_uptime_s();
+    app.clock_synced = true;
+}
+
+static uint32_t gc_app_controller_deadline_s(uint32_t unix_deadline_s)
+{
+    int64_t local_s;
+
+    if (unix_deadline_s == 0u || !app.clock_synced) {
+        return 0u;
+    }
+    local_s = (int64_t)unix_deadline_s - app.clock_offset_s;
+    if (local_s <= 0 || local_s > (int64_t)UINT32_MAX) {
+        return 0u;
+    }
+    return (uint32_t)local_s;
 }
 
 static uint64_t gc_app_quota_total_kb(void)
@@ -272,20 +297,23 @@ static void gc_app_apply_verdict(const gc_verdict_t *verdict)
     gc_mac_t mac = app.pending_mac;
     bool mapped = app.pending_active &&
                   memcmp(&verdict->req_id, &app.pending_req, sizeof(verdict->req_id)) == 0;
+    uint32_t allowed_until_s = gc_app_controller_deadline_s(verdict->allowed_until_s);
+    uint32_t blocked_until_s = gc_app_controller_deadline_s(verdict->blocked_until_s);
 
     if (mapped) {
         gc_gate_apply_verdict(&mac,
                               &number_key,
                               verdict->allow,
-                              verdict->allowed_until_s,
+                              allowed_until_s,
                               verdict->reason);
         gc_gate_pending_resolve(&verdict->req_id,
                                 verdict->allow,
-                                verdict->allowed_until_s,
-                                verdict->blocked_until_s,
+                                allowed_until_s,
+                                blocked_until_s,
                                 verdict->reason);
-        if (!verdict->allow && verdict->blocked_until_s > 0) {
-            gc_gate_soft_block(&mac, verdict->blocked_until_s);
+        if (!verdict->allow && blocked_until_s > 0u) {
+            uint32_t up_s = gc_app_uptime_s();
+            gc_gate_soft_block(&mac, blocked_until_s > up_s ? blocked_until_s - up_s : 0u);
         }
         if (verdict->permanent) {
             gc_gate_permanent_block(&number_key, &mac_key);
@@ -492,6 +520,7 @@ static void gc_app_on_ctrl_message(const char *topic,
         gc_app_apply_unblock(&msg.as.unblock);
         break;
     case GC_CTRL_MSG_ACK:
+        gc_app_sync_clock(msg.as.ack.server_time_s);
         app.heartbeat_acked = msg.as.ack.heartbeat_seen;
         app.controller_unreachable = false;
         break;
