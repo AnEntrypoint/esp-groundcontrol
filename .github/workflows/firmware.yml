@@ -1,0 +1,156 @@
+name: firmware
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: firmware-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (esp32s2, size + partition limits; warnings are not fatal)
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v5.4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache IDF build directory
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: idf-build-${{ runner.os }}-${{ hashFiles('main/**/*', 'sdkconfig.defaults') }}
+          restore-keys: |
+            idf-build-${{ runner.os }}-
+
+      - name: idf.py set-target esp32s2
+        shell: bash
+        run: |
+          set -euo pipefail
+          . "$IDF_PATH/export.sh"
+          idf.py set-target esp32s2
+
+      - name: idf.py build
+        shell: bash
+        run: |
+          set -euo pipefail
+          . "$IDF_PATH/export.sh"
+          idf.py build
+
+      - name: idf.py size and idf.py size-files
+        shell: bash
+        run: |
+          set -euo pipefail
+          . "$IDF_PATH/export.sh"
+          idf.py size 2>&1 | tee size-report.txt
+          idf.py size-files 2>&1 | tee size-files-report.txt
+
+      - name: Check every app image fits its slot (factory 0x100000, ota_0 and ota_1 0x170000)
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/app-fit.mjs" <<'NODE'
+          import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+
+          const PINNED = { factory: 0x100000, ota_0: 0x170000, ota_1: 0x170000 };
+
+          const slots = [];
+          for (const raw of readFileSync("partitions.csv", "utf8").split("\n")) {
+            const line = raw.split("#")[0].trim();
+            if (line === "") continue;
+            const cols = line.split(",").map((c) => c.trim());
+            if (cols[1] !== "app") continue;
+            const size = Number(cols[4]);
+            if (!Number.isFinite(size) || size <= 0) continue;
+            slots.push({ name: cols[0], size });
+          }
+          if (slots.length === 0) {
+            for (const name of Object.keys(PINNED)) slots.push({ name, size: PINNED[name] });
+          }
+
+          const report = existsSync("size-report.txt") ? readFileSync("size-report.txt", "utf8") : "";
+          const image = /Total image size:\s*~?\s*(\d+)/.exec(report);
+          const flash = /Used Flash size\s*:\s*(\d+)/.exec(report);
+          let appBytes = Math.max(image ? Number(image[1]) : 0, flash ? Number(flash[1]) : 0);
+          if (existsSync("build")) {
+            for (const name of readdirSync("build")) {
+              if (!name.endsWith(".bin") || name === "bootloader.bin" || name.startsWith("partition")) continue;
+              appBytes = Math.max(appBytes, statSync("build/" + name).size);
+            }
+          }
+          if (appBytes <= 0) {
+            console.error("app image size not found: no size report figure and no app .bin under build/");
+            process.exit(1);
+          }
+
+          console.log("app image " + appBytes + " bytes (0x" + appBytes.toString(16) + ")");
+          let over = false;
+          for (const slot of slots) {
+            const limit = PINNED[slot.name] ?? slot.size;
+            const ok = appBytes <= limit;
+            if (!ok) over = true;
+            const pct = ((appBytes / limit) * 100).toFixed(1);
+            console.log(
+              (ok ? "  ok   " : "  OVER ") +
+                slot.name +
+                " " + appBytes + " / " + limit +
+                " bytes (" + pct + "% used, headroom " + (limit - appBytes) + ")"
+            );
+          }
+          if (over) {
+            console.error("app image does not fit: raise the slot in partitions.csv or shrink the image");
+            process.exit(1);
+          }
+          NODE
+          node "$RUNNER_TEMP/app-fit.mjs"
+
+      - name: Upload size reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-size-reports
+          if-no-files-found: error
+          path: |
+            size-report.txt
+            size-files-report.txt
+
+  warnings:
+    name: build (esp32s2, -Werror via EXTRA_CFLAGS; allowed to fail on pre-existing warnings)
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v5.4
+    continue-on-error: true
+    env:
+      EXTRA_CFLAGS: -Werror
+      EXTRA_CXXFLAGS: -Werror
+      EXTRA_CPPFLAGS: -Werror
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore IDF build directory
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: idf-build-${{ runner.os }}-${{ hashFiles('main/**/*', 'sdkconfig.defaults') }}
+          restore-keys: |
+            idf-build-${{ runner.os }}-
+
+      - name: idf.py set-target esp32s2
+        shell: bash
+        run: |
+          set -euo pipefail
+          . "$IDF_PATH/export.sh"
+          idf.py set-target esp32s2
+
+      - name: idf.py build with warnings as errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          . "$IDF_PATH/export.sh"
+          echo "EXTRA_CFLAGS=$EXTRA_CFLAGS"
+          idf.py build

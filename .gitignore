@@ -1,0 +1,80 @@
+# >>> plugkit managed
+.agentplug-kv/
+.gm/exec-spool/
+.gm/gm-fired-*
+.gm/needs-gm
+.gm/lastskill
+.gm/turn-state.json
+.gm/turn-state.json.corrupted-*
+.gm/residual-check-fired
+.gm/claim-audit-fired
+.gm/continue.md
+.gm/.gm-continue-count
+.gm/long-gap-retry-state
+.gm/last-dispatch-ts
+.gm/last-instruction-ts
+.gm/.last-scan-deps-ts
+.gm/.last-scan-deps-result.json
+.gm/.embed-generation.*
+.gm/dream-rsi/
+.gm/fsm-graph-rejected.json
+.gm/bootstrap-status.json
+.gm/bootstrap-error.json
+.gm/trajectory-drafts/
+.gm/ingest-drafts/
+.gm/prd-state.json
+.gm/subagent-*.json
+.gm/build-tool-ignores.md
+.gm/last-prompt.txt
+.gm/hooks/
+.gm/no-memorize-this-turn
+.gm/prd.paused.yml
+.gm/prd.absorbed.json
+.gm/mutables.absorbed.json
+.gm/rs-learn.db
+.gm/rs-learn.db-shm
+.gm/rs-learn.db-wal
+.gm/learning-state.md
+.gm/git-block-counter.json
+.gm/disciplines/codeinsight/
+.gm/disciplines/codeinsight-vec/
+.gm/disciplines/codeinsight-manifest/
+.gm/disciplines/*/fiber-state.json
+.gm/instructions-source-cache/
+.gm/config-source-cache/
+.gm/config-source-cache.*
+.gm/config-source-cache-*
+# <<< plugkit managed
+
+# esp-idf
+build/
+sdkconfig
+sdkconfig.old
+dependencies.lock/
+managed_components/
+*.bin
+*.elf
+*.map
+
+# controller
+node_modules/
+dist/
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# secrets
+.env
+.env.*
+!.env.example
+gc-secrets/
+*.pem
+*.key
+
+# os
+.DS_Store
+Thumbs.db
+
+# gm state
+.gm/

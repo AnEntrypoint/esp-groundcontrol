@@ -1,0 +1,118 @@
+menu "Ground Control"
+
+    config GC_FW_VERSION
+        int "Firmware version number reported in telemetry"
+        default 1
+        range 1 255
+
+    config GC_SITE_ID
+        int "Default site id (overridden by provisioning)"
+        default 1
+        range 1 65535
+
+    config GC_DEVICE_ID
+        int "Default device id (overridden by provisioning)"
+        default 1
+        range 1 65535
+
+    config GC_MAX_CLIENTS
+        int "Maximum concurrent portal clients"
+        default 24
+        range 1 32
+
+    config GC_AP_SSID
+        string "Default soft-AP SSID"
+        default "groundcontrol"
+
+    config GC_AP_PASSPHRASE
+        string "Default soft-AP passphrase"
+        default ""
+
+    config GC_STA_SSID
+        string "Default uplink SSID (B315)"
+        default ""
+
+    config GC_STA_PASSPHRASE
+        string "Default uplink passphrase"
+        default ""
+
+    config GC_BROKER_URI
+        string "MQTT broker URI (mqtts://host:port)"
+        default ""
+
+    config GC_MANIFEST_URL
+        string "OTA manifest URL (https)"
+        default ""
+
+    config GC_BEACON_HOST
+        string "Emergency beacon host"
+        default ""
+
+    config GC_BEACON_PORT
+        int "Emergency beacon UDP port"
+        default 41234
+        range 1024 65535
+
+    config GC_DAILY_BUDGET_KB
+        int "Daily byte budget in KiB"
+        default 1048576
+        range 1024 16777216
+
+    config GC_MONTHLY_RESERVE_KB
+        int "Protected monthly reserve in KiB"
+        default 614400
+        range 1024 16777216
+
+    config GC_CLIENT_RATE_KBYTE_S
+        int "Per-client rate limit in KiB/s"
+        default 128
+        range 8 4096
+
+    config GC_TELEMETRY_BATCH_S
+        int "Telemetry batch period in seconds"
+        default 3600
+        range 60 86400
+
+    config GC_MQTT_KEEPALIVE_S
+        int "MQTT keepalive in seconds"
+        default 300
+        range 30 3600
+
+    config GC_MODEM_POLL_S
+        int "B315 poll period in seconds"
+        default 300
+        range 30 3600
+
+    config GC_SOFT_BLOCK_S
+        int "Soft block duration in seconds"
+        default 86400
+        range 60 604800
+
+    config GC_STRIKE_LIMIT
+        int "Strikes before a permanent block"
+        default 3
+        range 1 32
+
+    config GC_ALLOW_GRACE_S
+        int "Grace period granted on an allow verdict in seconds"
+        default 3600
+        range 60 604800
+
+    config GC_SELFTEST_DEADLINE_S
+        int "Self-test deadline in seconds"
+        default 300
+        range 30 900
+
+    config GC_VERIFY_MODE_CHALLENGE
+        bool "Use challenge mode instead of contact mode"
+        default n
+
+    config GC_RESCUE_IMAGE
+        bool "Build the factory rescue image (no portal, beacon and OTA only)"
+        default n
+
+    config GC_BENCH_FAULTS
+        bool "Enable bench fault injection hooks"
+        default n
+
+endmenu

@@ -1,0 +1,13 @@
+# ESP-IDF Partition Table
+# Name,   Type, SubType, Offset,   Size,     Flags
+# 4 MB in-package flash on the D1 mini ESP32-S2FN4R2.
+# Offsets are absolute and must be 0x1000-aligned; app partitions must also be
+# 0x10000-aligned. The three app partitions fill the part exactly:
+# 0x290000 + 0x170000 = 0x400000, the top of the 4 MB part. There is no spare
+# for a coredump slot; shrink ota_1 if one is needed later.
+nvs,      data, nvs,     0x9000,   0x6000,
+otadata,  data, ota,     0xf000,   0x2000,
+phy_init, data, phy,     0x11000,  0x1000,
+factory,  app,  factory, 0x20000,  0x100000,
+ota_0,    app,  ota_0,   0x120000, 0x170000,
+ota_1,    app,  ota_1,   0x290000, 0x170000,

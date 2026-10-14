@@ -1,0 +1,42 @@
+name: controller
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: typecheck and build (node 20)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: controller
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: npm ci
+        run: |
+          set -euo pipefail
+          if [ ! -f package-lock.json ]; then npm install --package-lock-only --no-audit --no-fund; fi
+          npm ci --no-audit --no-fund
+
+      - name: npx tsc --noEmit
+        run: npx tsc --noEmit
+
+      - name: npm run build
+        run: npm run build
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: controller-dist
+          if-no-files-found: error
+          path: controller/dist

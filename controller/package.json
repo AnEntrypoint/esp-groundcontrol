@@ -1,0 +1,27 @@
+{
+  "name": "@esp-groundcontrol/controller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Central control service for the esp-groundcontrol public Wi-Fi access system",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "aedes": "^1.2.0",
+    "better-sqlite3": "^13.0.3",
+    "mqtt": "^5.16.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
+    "typescript": "^5.9.3"
+  }
+}
