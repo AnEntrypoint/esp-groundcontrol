@@ -367,10 +367,10 @@ gc_err_t gc_dns_redirect_start(uint32_t ap_ip)
     return GC_OK;
 }
 
-void gc_dns_redirect_stop(void)
+gc_err_t gc_dns_redirect_stop(void)
 {
     if (!s_running) {
-        return;
+        return GC_OK;
     }
 
     s_running = false;
@@ -396,6 +396,7 @@ void gc_dns_redirect_stop(void)
     }
 
     GC_LOGI(GC_DNS_TAG, "stopped");
+    return GC_OK;
 }
 
 bool gc_dns_redirect_running(void)

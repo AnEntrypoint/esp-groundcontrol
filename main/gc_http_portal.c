@@ -472,6 +472,21 @@ static bool http_client_ip(httpd_req_t *req, uint32_t *ip_net)
     return true;
 }
 
+static struct netif *http_ap_netif(void)
+{
+    esp_netif_ip_info_t ap_info;
+
+    if (gc_netif_ap_ipv4(&ap_info) != GC_OK) {
+        return NULL;
+    }
+    for (struct netif *candidate = netif_list; candidate != NULL; candidate = candidate->next) {
+        if (netif_ip4_addr(candidate)->addr == ap_info.ip.addr) {
+            return candidate;
+        }
+    }
+    return NULL;
+}
+
 static bool http_client_mac(httpd_req_t *req, gc_mac_t *out)
 {
     uint32_t ip_net = 0u;
@@ -479,7 +494,7 @@ static bool http_client_mac(httpd_req_t *req, gc_mac_t *out)
         return false;
     }
 
-    struct netif *ap_netif = (struct netif *)esp_netif_get_netif_impl(gc_netif_ap());
+    struct netif *ap_netif = http_ap_netif();
     if (ap_netif == NULL) {
         return false;
     }
@@ -575,7 +590,7 @@ static esp_err_t http_serve_login(httpd_req_t *req, const http_block_state_t *bl
     char *page = http_alloc_page();
     if (page == NULL) {
         GC_LOGW(GC_HTTP_TAG, "page buffer unavailable");
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "internal error");
     }
 
     char escaped[GC_HTTP_ESCAPED_NOTICE_MAX];
@@ -596,7 +611,7 @@ static esp_err_t http_serve_blocked(httpd_req_t *req, const http_block_state_t *
 {
     char *page = http_alloc_page();
     if (page == NULL) {
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "internal error");
     }
 
     char line[GC_HTTP_LINE_MAX];
@@ -614,7 +629,7 @@ static esp_err_t http_serve_notice(httpd_req_t *req)
 {
     char *page = http_alloc_page();
     if (page == NULL) {
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "internal error");
     }
 
     char escaped[GC_HTTP_ESCAPED_NOTICE_MAX];
@@ -743,7 +758,7 @@ static esp_err_t http_get_status(httpd_req_t *req)
                        "{\"state\":\"%s\",\"blocked_remaining_s\":%lu,\"notice_served\":%s}",
                        state, remaining, notice_served);
     if (len <= 0) {
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "internal error");
     }
 
     (void)httpd_resp_set_type(req, "application/json");
@@ -777,7 +792,7 @@ static esp_err_t http_get_probe(httpd_req_t *req)
     char body[GC_HTTP_STATUS_MAX];
     int len = snprintf(body, sizeof(body), "OK state=%s\n", state);
     if (len <= 0) {
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "internal error");
     }
 
     (void)httpd_resp_set_type(req, "text/plain");
@@ -792,12 +807,12 @@ static esp_err_t http_post_login(httpd_req_t *req)
 
     char body[GC_HTTP_BODY_MAX + 1u];
     if (http_read_body(req, body, sizeof(body)) != GC_OK) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST);
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad request");
     }
 
     char raw[GC_HTTP_FIELD_MAX + 1u];
     if (!http_form_field(body, strlen(body), "number", raw, sizeof(raw))) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST);
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad request");
     }
 
     s_logins++;
@@ -805,7 +820,7 @@ static esp_err_t http_post_login(httpd_req_t *req)
     gc_mac_t mac;
     if (!http_client_mac(req, &mac)) {
         GC_LOGW(GC_HTTP_TAG, "login without client mac");
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "internal error");
     }
 
     char e164[GC_HTTP_E164_MAX];
@@ -825,7 +840,7 @@ static esp_err_t http_post_login(httpd_req_t *req)
     gc_err_t submitted_err = gc_gate_submit_number(&mac, e164, &submitted);
     if (submitted_err != GC_OK) {
         GC_LOGW(GC_HTTP_TAG, "submit failed: %s", gc_err_name(submitted_err));
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "internal error");
     }
 
     http_block_state_t block = http_block_state(gc_gate_find(&mac));
@@ -839,7 +854,7 @@ static esp_err_t http_post_login(httpd_req_t *req)
 
     char *page = http_alloc_page();
     if (page == NULL) {
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "internal error");
     }
 
     char last_digits[GC_HTTP_LAST_DIGITS_MAX];
@@ -944,10 +959,10 @@ gc_err_t gc_http_portal_start(const gc_config_t *cfg)
     return GC_OK;
 }
 
-void gc_http_portal_stop(void)
+gc_err_t gc_http_portal_stop(void)
 {
     if (!s_running) {
-        return;
+        return GC_OK;
     }
 
     (void)httpd_stop(s_server);
@@ -959,6 +974,7 @@ void gc_http_portal_stop(void)
     http_pending_unlock();
 
     GC_LOGI(GC_HTTP_TAG, "stopped");
+    return GC_OK;
 }
 
 bool gc_http_portal_running(void)

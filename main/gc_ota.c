@@ -10,7 +10,7 @@
 #include <time.h>
 
 #include "cJSON.h"
-#include "esp_app_format.h"
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_ota_ops.h"
