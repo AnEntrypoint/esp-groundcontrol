@@ -171,12 +171,31 @@ static uint32_t get_u32(const uint8_t *in)
     return (uint32_t)in[0] | ((uint32_t)in[1] << 8) | ((uint32_t)in[2] << 16) | ((uint32_t)in[3] << 24);
 }
 
+static uint32_t block_remaining_s(const gc_block_record_t *rec, uint32_t now_s)
+{
+    if (rec->permanent != 0u || rec->blocked_until_s <= now_s) {
+        return 0u;
+    }
+    return rec->blocked_until_s - now_s;
+}
+
+static uint32_t block_deadline_from_remaining(uint32_t remaining_s, uint32_t now_s)
+{
+    if (remaining_s == 0u) {
+        return 0u;
+    }
+    if (remaining_s > (UINT32_MAX - now_s)) {
+        return UINT32_MAX;
+    }
+    return now_s + remaining_s;
+}
+
 static void block_record_write(uint8_t *out, const gc_block_record_t *rec)
 {
     memcpy(out, rec->number_key.b, GC_KEY_LEN);
     memcpy(out + GC_KEY_LEN, rec->mac_key.b, GC_KEY_LEN);
     put_u32(out + (2u * GC_KEY_LEN), rec->strikes);
-    put_u32(out + (2u * GC_KEY_LEN) + 4u, rec->blocked_until_s);
+    put_u32(out + (2u * GC_KEY_LEN) + 4u, block_remaining_s(rec, gate_now_s()));
     out[(2u * GC_KEY_LEN) + 8u] = rec->permanent;
     memset(out + (2u * GC_KEY_LEN) + 9u, 0, 3);
 }
@@ -186,8 +205,8 @@ static void block_record_read(const uint8_t *in, gc_block_record_t *rec)
     memcpy(rec->number_key.b, in, GC_KEY_LEN);
     memcpy(rec->mac_key.b, in + GC_KEY_LEN, GC_KEY_LEN);
     rec->strikes = get_u32(in + (2u * GC_KEY_LEN));
-    rec->blocked_until_s = get_u32(in + (2u * GC_KEY_LEN) + 4u);
     rec->permanent = in[(2u * GC_KEY_LEN) + 8u];
+    rec->blocked_until_s = block_deadline_from_remaining(get_u32(in + (2u * GC_KEY_LEN) + 4u), gate_now_s());
     memset(rec->reserved, 0, sizeof(rec->reserved));
 }
 
