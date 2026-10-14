@@ -39,7 +39,7 @@ idf_component_register(
         esp_http_client
         esp_https_ota
         esp_app_format
-        esp_ota
+        app_update
         esp_partition
         esp_hw_support
         esp_timer
